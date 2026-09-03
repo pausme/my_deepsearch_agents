@@ -1,11 +1,13 @@
 import {
   ApiOutlined,
+  BookOutlined,
   BranchesOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
   CloudServerOutlined,
   DatabaseOutlined,
   FileSearchOutlined,
+  FileTextOutlined,
   ToolOutlined
 } from "@ant-design/icons";
 import { Alert, App as AntApp, Button } from "antd";
@@ -83,7 +85,7 @@ export default function App() {
   async function handleSubmit() {
     const cleanQuery = query.trim();
     if (!cleanQuery) {
-      message.warning("请输入研搜任务");
+      message.warning("请描述你的装修问题");
       return;
     }
 
@@ -142,13 +144,13 @@ export default function App() {
     <div className="chat-app-shell min-h-dvh">
       <aside className="chat-sidebar" aria-label="会话信息">
         <div className="sidebar-brand">
-          <span className="panel-kicker">DEEPSEARCH</span>
-          <h1>深度研搜</h1>
-          <p>对话式多智能体研究台</p>
+          <span className="panel-kicker">RENOVATION</span>
+          <h1>装修决策管家</h1>
+          <p>新房装修决策与预算分析助手</p>
         </div>
 
         <Button className="new-chat-button" block onClick={handleNewSession}>
-          新建研搜
+          新建分析
         </Button>
 
         <div className="sidebar-section">
@@ -186,15 +188,23 @@ export default function App() {
           <ul className="agent-mini-list">
             <li>
               <CloudServerOutlined aria-hidden />
-              网络搜索助手
+              网络资料助手
+            </li>
+            <li>
+              <FileTextOutlined aria-hidden />
+              报价单分析助手
+            </li>
+            <li>
+              <FileSearchOutlined aria-hidden />
+              合同风险助手
             </li>
             <li>
               <DatabaseOutlined aria-hidden />
               数据库查询助手
             </li>
             <li>
-              <FileSearchOutlined aria-hidden />
-              RAGFlow 助手
+              <BookOutlined aria-hidden />
+              RAGFlow 知识库
             </li>
           </ul>
         </div>
@@ -209,12 +219,12 @@ export default function App() {
       <main className="chat-main">
         <header className="chat-topbar">
           <div>
-            <span className="panel-kicker">CHAT WORKSPACE</span>
-            <h2>深度研搜对话</h2>
+            <span className="panel-kicker">ANALYSIS WORKSPACE</span>
+            <h2>装修决策分析</h2>
           </div>
           <div className={`run-indicator ${session.isRunning ? "run-indicator--live" : ""}`}>
             {session.isRunning ? <BranchesOutlined aria-hidden /> : <CheckCircleOutlined aria-hidden />}
-            {session.isRunning ? "研搜中" : "待命"}
+            {session.isRunning ? "分析中" : "待命"}
           </div>
         </header>
 

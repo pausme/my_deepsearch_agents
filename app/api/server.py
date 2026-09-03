@@ -7,7 +7,6 @@ WebSocket 长连接。HTTP 接口只做轻量调度，真正的 DeepAgents 执�
 """
 
 import asyncio
-import shutil
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -29,6 +28,7 @@ from pydantic import BaseModel
 
 from app.agent.main_agent import run_deep_agent
 from app.api.monitor import manager
+from app.utils.upload_security import MAX_FILE_SIZE, validate_upload
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -148,9 +148,14 @@ async def upload_files(files: List[UploadFile] = File(...), thread_id: str = For
     文件上传接口 (File Upload)。
 
     目标：
-    1. 接收用户上传的一个或多个文件。
-    2. 保存到 `updated/session_{thread_id}` 目录。
+    1. 接收用户上传的一个或多个装修资料（报价单、合同、户型说明、清单等）。
+    2. 安全校验后保存到 `updated/session_{thread_id}` 目录。
     3. 供 Agent 在后续任务中读取和分析。
+
+    安全边界（app/utils/upload_security.py）：
+    - 文件名清洗，杜绝 ../ 路径穿越和危险字符
+    - 后缀白名单：pdf/docx/xlsx/xls/md/txt/csv
+    - 单文件 20MB 大小限制
 
     Args:
         files (List[UploadFile]): 文件对象列表。
@@ -161,14 +166,47 @@ async def upload_files(files: List[UploadFile] = File(...), thread_id: str = For
     target_dir.mkdir(parents=True, exist_ok=True)
 
     saved_files = []
+    rejected_files = []
     for file in files:
-        file_path = target_dir / file.filename
-        # 直接复制文件流，避免大文件一次性读入内存
-        with file_path.open("wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        saved_files.append(file.filename)
+        # 先流式读取并计数，超限立即拒绝，避免超大文件占满磁盘
+        storage_name, extension, error = validate_upload(file.filename, None)
+        if error:
+            rejected_files.append({"original_name": file.filename, "error": error})
+            continue
 
-    return {"status": "uploaded", "files": saved_files}
+        file_path = target_dir / storage_name
+        written = 0
+        try:
+            with file_path.open("wb") as buffer:
+                while chunk := await file.read(1024 * 1024):
+                    written += len(chunk)
+                    if written > MAX_FILE_SIZE:
+                        raise ValueError("文件超过 20MB 上限")
+                    buffer.write(chunk)
+        except ValueError as e:
+            file_path.unlink(missing_ok=True)
+            rejected_files.append({"original_name": file.filename, "error": str(e)})
+            continue
+        except Exception as e:
+            file_path.unlink(missing_ok=True)
+            rejected_files.append({"original_name": file.filename, "error": f"保存失败: {e}"})
+            continue
+
+        saved_files.append(
+            {
+                "original_name": file.filename,
+                "storage_name": storage_name,
+                "extension": extension.lstrip("."),
+                "size": written,
+            }
+        )
+
+    return {
+        "status": "uploaded" if saved_files else "all_rejected",
+        "files": [item["storage_name"] for item in saved_files],
+        "file_details": saved_files,
+        "rejected": rejected_files,
+    }
 
 
 @app.get("/api/download")
@@ -290,4 +328,4 @@ async def websocket_endpoint(websocket: WebSocket, thread_id: str):
 
 
 if __name__ == "__main__":
-    uvicorn.run("api.server:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("app.api.server:app", host="0.0.0.0", port=8000, reload=True)

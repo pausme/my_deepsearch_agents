@@ -88,20 +88,22 @@ def read_file_content(
                 return "错误：未安装 'pandas' 库，无法读取 Excel 文件。"
 
             try:
-                df = pd.read_excel(str(file_path))
+                # 读取所有 sheet：装修报价单经常按"半包/全包"或房间分 sheet
+                sheets = pd.read_excel(str(file_path), sheet_name=None)
             except Exception as e:
                 return f"读取 Excel 失败: {str(e)}"
 
-            # Excel 不直接返回全量数据，先给模型列名、预览和统计摘要，避免上下文过长
-            result = [
-                f"文件: {filename}",
-                f"行数: {len(df)}, 列数: {len(df.columns)}",
-                f"列名: {', '.join(df.columns.astype(str))}",
-                "\n[前5行数据预览]:",
-                df.head().to_string(index=False),
-                "\n[统计描述]:",
-                df.describe().to_string(),
-            ]
+            # 每个 sheet 只返回列名、预览和统计摘要，避免上下文过长
+            result = [f"文件: {filename}, 共 {len(sheets)} 个 sheet"]
+            for sheet_name, df in sheets.items():
+                result.extend(
+                    [
+                        f"\n[Sheet: {sheet_name}] 行数: {len(df)}, 列数: {len(df.columns)}",
+                        f"列名: {', '.join(df.columns.astype(str))}",
+                        "[前5行数据预览]:",
+                        df.head().to_string(index=False),
+                    ]
+                )
             return "\n".join(result)
 
         else:

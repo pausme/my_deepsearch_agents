@@ -1,7 +1,7 @@
 """
 主智能体组装与异步执行模块
 
-负责把模型、主提示词、文件类工具和三个专家子智能体组装成 DeepAgent，
+负责把模型、主提示词、文件类工具和五个专家子智能体组装成 DeepAgent，
 并提供 run_deep_agent 作为后续 API 层调用的统一入口。运行时还会为每个
 session_id 创建独立工作目录，并把工具调用、子智能体调用和最终结果推送给前端。
 """
@@ -15,9 +15,11 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from app.agent.llm import model
 from app.agent.prompts import main_agent_content
+from app.agent.subagents.contract_review_agent import contract_review_agent
 from app.agent.subagents.database_query_agent import database_query_agent
 from app.agent.subagents.knowledge_base_agent import knowledge_base_agent
 from app.agent.subagents.network_search_agent import network_search_agent
+from app.agent.subagents.quote_review_agent import quote_review_agent
 from app.api.context import (
     reset_session_context,
     set_session_context,
@@ -26,20 +28,26 @@ from app.api.context import (
 from app.api.monitor import monitor
 
 # 文件类工具由主智能体直接掌握，负责读取上传附件和生成最终交付文档
-from app.tools.markdown_tools import generate_markdown
+from app.tools.markdown_tools import generate_markdown, generate_renovation_report
 from app.tools.pdf_tools import convert_md_to_pdf
 from app.tools.upload_file_read_tool import read_file_content
 
 # 主智能体是调度中心：
-# 1. tools 只放最终交付相关的文件工具
-# 2. subagents 放网络、数据库、RAGFlow 三类信息获取助手
+# 1. tools 只放最终交付相关的文件工具（装修诊断报告走固定模板的 generate_renovation_report）
+# 2. subagents 放网络、数据库、RAGFlow、报价单分析、合同风险五类助手
 # 3. checkpointer 通过 thread_id 保存同一会话中的执行上下文
 main_agent = create_deep_agent(
     model=model,
     system_prompt=main_agent_content["system_prompt"],
-    tools=[generate_markdown, convert_md_to_pdf, read_file_content],
+    tools=[generate_renovation_report, generate_markdown, convert_md_to_pdf, read_file_content],
     checkpointer=InMemorySaver(),
-    subagents=[database_query_agent, network_search_agent, knowledge_base_agent],
+    subagents=[
+        database_query_agent,
+        network_search_agent,
+        knowledge_base_agent,
+        quote_review_agent,
+        contract_review_agent,
+    ],
 )
 
 # 当前文件位于 app/agent/main_agent.py，parents[1] 即 app 目录

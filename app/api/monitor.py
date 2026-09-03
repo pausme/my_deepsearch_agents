@@ -127,6 +127,27 @@ class ToolMonitor:
         """报告任务最终结果"""
         self._emit("task_result", "任务执行完成", {"result": result})
 
+    def report_risk(
+        self,
+        level: str,
+        title: str,
+        description: str = "",
+    ) -> None:
+        """报告分析过程中发现的高危风险项"""
+        self._emit(
+            "risk_found",
+            f"发现风险: {title}",
+            {"level": level, "title": title, "description": description},
+        )
+
+    def report_file_generated(self, path: str, filename: str = "") -> None:
+        """报告已生成报告文件，前端收到后可即时刷新文件列表"""
+        self._emit(
+            "report_generated",
+            f"报告已生成: {filename or path}",
+            {"path": path, "filename": filename},
+        )
+
     def report_task_cancelled(self) -> None:
         """报告任务已被用户取消"""
         self._emit("task_cancelled", "任务已取消")

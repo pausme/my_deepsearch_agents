@@ -4,14 +4,16 @@ import {
   ClockCircleOutlined,
   CloseCircleOutlined,
   CloudServerOutlined,
-  DatabaseOutlined,
   DownloadOutlined,
   FileMarkdownOutlined,
   FilePdfOutlined,
   FileSearchOutlined,
   FileTextOutlined,
+  HomeOutlined,
   StopOutlined,
   ToolOutlined,
+  WarningOutlined,
+  FileDoneOutlined,
 } from "@ant-design/icons";
 import { Button, Tooltip } from "antd";
 import { useEffect, useRef, useState } from "react";
@@ -36,39 +38,39 @@ interface ConversationThreadProps {
 
 const TASK_EXAMPLES = [
   {
-    tool: "网络搜索工具",
-    title: "联网趋势研判",
+    tool: "报价单分析助手",
+    title: "报价单风险初筛",
     prompt:
-      "请使用网络搜索工具，检索 2026 年跨境电商 AI 客服趋势，列出 5 条关键变化，并附上来源链接。",
-    icon: <CloudServerOutlined aria-hidden />,
-  },
-  {
-    tool: "数据库查询工具",
-    title: "药品库存排查",
-    prompt:
-      "请请使用数据库查询工具，查询库存大于 100 的药品，按库存量升序列出药品名称、批次号、仓库位置和过期日期。",
-    icon: <DatabaseOutlined aria-hidden />,
-  },
-  {
-    tool: "RAGFlow 知识库",
-    title: "内部文档问答",
-    prompt:
-      "请使用 RAGFlow 助手，查询公司内部白皮书中关于品类策略的内容，并整理成三条可执行建议。",
-    icon: <FileSearchOutlined aria-hidden />,
-  },
-  {
-    tool: "文件读取工具",
-    title: "上传文件分析",
-    prompt:
-      "请使用文件读取工具，读取我上传的文件，提炼核心观点、风险点和待补充信息，并给出下一步分析计划。",
+      "请先上传或确认我已上传装修报价单，然后帮我分析这份报价单有没有漏项、重复收费、计价含混和明显偏贵的地方，输出风险清单。",
     icon: <FileTextOutlined aria-hidden />,
   },
   {
-    tool: "Markdown/PDF 工具",
-    title: "生成交付报告",
+    tool: "合同风险助手",
+    title: "合同条款排查",
     prompt:
-      "请使用 Markdown 文档生成工具和 Markdown 转 PDF 工具，基于本次调研结果生成一份 Markdown 报告，并转换成 PDF 保存到当前工作目录。",
-    icon: <FileMarkdownOutlined aria-hidden />,
+      "请读取我上传的装修合同，检查付款节点是否过度前置、工期和延期责任是否明确、增项和材料替换有没有书面确认流程、保修是否符合国家标准，并给出风险清单。",
+    icon: <FileSearchOutlined aria-hidden />,
+  },
+  {
+    tool: "首次诊断",
+    title: "预算与方案诊断",
+    prompt:
+      "我家在杭州，89 平三室两厅，预算 15-18 万，全包给装修公司，目前处于看报价阶段。请给我一份首次诊断：预算是否合理、哪些项目必须花钱、哪些容易超支。",
+    icon: <HomeOutlined aria-hidden />,
+  },
+  {
+    tool: "网络资料助手",
+    title: "材料与避坑检索",
+    prompt:
+      "帮我检索杭州地区全包装修的市场价格区间和常见增项陷阱，重点看水电改造和防水这两个环节，并注明信息来源。",
+    icon: <CloudServerOutlined aria-hidden />,
+  },
+  {
+    tool: "完整报告",
+    title: "生成装修诊断报告",
+    prompt:
+      "请结合我上传的报价单、合同和检索到的市场信息，生成一份完整的装修决策分析报告（Markdown），再转换成 PDF。",
+    icon: <FilePdfOutlined aria-hidden />,
   },
 ];
 
@@ -158,6 +160,12 @@ function EventIcon({ event }: { event: string }) {
   }
   if (event === "task_cancelled") {
     return <StopOutlined aria-hidden />;
+  }
+  if (event === "risk_found") {
+    return <WarningOutlined aria-hidden />;
+  }
+  if (event === "report_generated") {
+    return <FileDoneOutlined aria-hidden />;
   }
   if (event === "error") {
     return <CloseCircleOutlined aria-hidden />;
@@ -272,7 +280,7 @@ function ThinkingLoader({ durationLabel }: { durationLabel: string }) {
     >
       <div className="loader-status">
         <span className="loader-pulse" aria-hidden />
-        <strong>正在研搜</strong>
+        <strong>正在分析</strong>
         <span className="loader-duration">已思考 {durationLabel}</span>
         <span className="loader-dots" aria-hidden>
           <i />
@@ -282,9 +290,10 @@ function ThinkingLoader({ durationLabel }: { durationLabel: string }) {
       </div>
       <div className="loader-track" aria-hidden />
       <ul className="loader-steps" aria-hidden>
-        <li>理解问题</li>
-        <li>调度工具</li>
-        <li>汇总答案</li>
+        <li>理解需求</li>
+        <li>检索与解析资料</li>
+        <li>识别风险</li>
+        <li>汇总结论</li>
       </ul>
     </div>
   );
@@ -322,7 +331,7 @@ function AssistantMessage({
       <div className="message-avatar">AI</div>
       <div className="message-bubble">
         <div className="message-meta">
-          <span>DeepSearch Agents</span>
+          <span>装修决策管家</span>
           <time>{syncLabel}</time>
         </div>
 
@@ -333,7 +342,7 @@ function AssistantMessage({
           <summary>
             <span>
               <BranchesOutlined aria-hidden />
-              深度研搜过程
+              分析过程
             </span>
             <strong>{events.length}</strong>
           </summary>
@@ -381,14 +390,14 @@ export function ConversationThread({
       <div className="conversation-empty">
         <div className="empty-examples">
           <div className="empty-examples-copy">
-            <span className="panel-kicker">TASK EXAMPLES</span>
-            <h3>选择一个工具任务开始</h3>
+            <span className="panel-kicker">ANALYSIS SCENARIOS</span>
+            <h3>选择一个分析场景开始</h3>
             <p>
-              每个示例会触发不同工具路径，执行轨迹和输出文件会直接出现在对话里。
+              上传报价单或合同后点击示例即可开始分析，执行轨迹和生成的报告会直接出现在对话里。
             </p>
           </div>
 
-          <div className="example-grid" aria-label="研搜任务示例">
+          <div className="example-grid" aria-label="装修分析场景示例">
             {TASK_EXAMPLES.map((example) => (
               <button
                 className="example-card"

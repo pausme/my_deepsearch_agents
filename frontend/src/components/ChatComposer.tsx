@@ -82,7 +82,7 @@ export function ChatComposer({
   }
 
   return (
-    <section className="chat-composer" aria-label="发送研搜任务">
+    <section className="chat-composer" aria-label="发送装修分析任务">
       {uploadedItems.length > 0 ? (
         <div className="attachment-strip" aria-label="当前会话附件">
           {uploadedItems.map((item) => (
@@ -108,7 +108,7 @@ export function ChatComposer({
 
       <div className="composer-shell">
         <textarea
-          aria-label="研搜任务"
+          aria-label="装修分析任务"
           disabled={isRunning}
           onChange={(event) => onQueryChange(event.target.value)}
           onKeyDown={(event) => {
@@ -117,7 +117,7 @@ export function ChatComposer({
               onSubmit();
             }
           }}
-          placeholder="向 DeepSearch Agents 发送任务..."
+          placeholder={"描述你的装修问题，或上传报价单/合同后输入「帮我分析这份报价单」，支持 PDF / Word / Excel / Markdown 附件"}
           value={query}
         />
 

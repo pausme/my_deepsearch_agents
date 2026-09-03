@@ -4,6 +4,11 @@ MySQL 数据库查询工具模块
 封装数据库查询助手使用的三个 LangChain 工具：
 list_sql_tables 用于发现真实表名，get_table_data 用于预览字段和样例数据，
 execute_sql_query 用于在确认结构后执行自定义查询。
+
+安全边界（app/utils/sql_guard.py）：
+- get_table_data 的表名必须通过白名单校验
+- execute_sql_query 只允许 SELECT/SHOW/DESC/EXPLAIN，自动补 LIMIT，
+  拒绝 DML/DDL 和白名单之外的表
 """
 
 import os
@@ -13,6 +18,7 @@ from langchain_core.tools import tool
 from mysql.connector import Error, connect
 
 from app.api.monitor import monitor
+from app.utils.sql_guard import validate_readonly_sql, validate_table_name
 
 load_dotenv()
 
@@ -47,6 +53,12 @@ def get_db_config():
         raise ValueError(f"缺失数据库核心配置：{', '.join(missing_keys)}")
 
     return config
+
+
+def _list_allowed_tables(cursor) -> set[str]:
+    """用 SHOW TABLES 拿到当前库的真实表名，作为查询白名单。"""
+    cursor.execute("SHOW TABLES")
+    return {row[0] for row in cursor.fetchall()}
 
 
 @tool
@@ -122,12 +134,15 @@ def get_table_data(table_name) -> str:
     # 获取数据库参数
     config = get_db_config()
 
-    # 查询流程同样是：连接 -> cursor -> 执行 SQL -> 获取列信息和数据 -> 自动释放资源
+    # 查询流程同样是：连接 -> cursor -> 校验表名 -> 执行 SQL -> 获取列信息和数据 -> 自动释放资源
     try:
         with connect(**config) as conn:
             with conn.cursor() as cursor:
-                # 教程代码直接拼接表名，重点演示 Agent 查询链路；生产环境应改为白名单校验
-                sql = f"SELECT * FROM {table_name} LIMIT 100"
+                allowed_tables = _list_allowed_tables(cursor)
+                # 表名走白名单校验并加反引号，杜绝表名拼接注入
+                safe_table = validate_table_name(table_name, allowed_tables)
+
+                sql = f"SELECT * FROM {safe_table} LIMIT 100"
                 cursor.execute(sql)
 
                 # cursor.description 保存查询结果的列元信息
@@ -162,12 +177,14 @@ def get_table_data(table_name) -> str:
 @tool
 def execute_sql_query(query) -> str:
     """
-    执行自定义 SQL 查询
+    执行自定义只读 SQL 查询
 
     切记：执行之前，需要通过 list_sql_tables 明确真实表名，
     再通过 get_table_data 明确表结构和数据格式。
     适合多表关联、筛选、聚合、排序等复杂查询。
-    :param query: 要执行的自定义 SQL 语句
+    安全限制：仅允许 SELECT/SHOW 只读查询，表名必须在白名单内，
+    未带 LIMIT 的查询会自动限制最多 100 行；写操作会被直接拒绝。
+    :param query: 要执行的只读 SQL 语句
     :return: CSV 格式数据
              1. 第一行是列信息，列之间使用英文逗号分隔
              2. 第二行开始是表数据，值之间也使用英文逗号分隔
@@ -186,12 +203,17 @@ def execute_sql_query(query) -> str:
     config = get_db_config()
 
     # 自定义查询和 get_table_data 的结果处理逻辑一致：
-    # 执行 SQL -> 读取 description 得到列名 -> fetchall 得到数据 -> 拼成 CSV 返回
+    # 白名单与只读校验 -> 执行 SQL -> 读取 description 得到列名 -> fetchall 得到数据 -> 拼成 CSV 返回
     try:
         with connect(**config) as conn:
             with conn.cursor() as cursor:
-                # 当前章节依赖提示词约束模型生成只读查询；生产环境建议在工具层限制 SELECT/SHOW
-                cursor.execute(query)
+                allowed_tables = _list_allowed_tables(cursor)
+                # 只读守卫：仅放行 SELECT/SHOW/DESC/EXPLAIN，校验表名白名单并自动补 LIMIT
+                safe_query, guard_error = validate_readonly_sql(query, allowed_tables)
+                if guard_error:
+                    return f"SQL 已被拒绝，{guard_error}。请修改为合法的只读查询后重试。"
+
+                cursor.execute(safe_query)
 
                 # 非查询类 SQL 没有结果集描述，这里统一返回提示，避免工具调用直接抛错给模型
                 description = cursor.description

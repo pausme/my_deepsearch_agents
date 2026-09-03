@@ -196,7 +196,7 @@ export function useDeepAgentSession() {
     async (query: string) => {
       const cleanQuery = query.trim();
       if (!cleanQuery) {
-        throw new Error("请输入研搜任务");
+        throw new Error("请描述你的装修问题");
       }
 
       setIsRunning(true);

@@ -3,8 +3,10 @@ import {
   CheckCircleOutlined,
   ClockCircleOutlined,
   CloseCircleOutlined,
+  FileDoneOutlined,
   FileSearchOutlined,
-  ToolOutlined
+  ToolOutlined,
+  WarningOutlined
 } from "@ant-design/icons";
 import { Empty } from "antd";
 import type { MonitorMessage } from "../types";
@@ -34,6 +36,12 @@ function EventIcon({ event }: { event: string }) {
   }
   if (event === "task_result") {
     return <CheckCircleOutlined aria-hidden />;
+  }
+  if (event === "risk_found") {
+    return <WarningOutlined aria-hidden />;
+  }
+  if (event === "report_generated") {
+    return <FileDoneOutlined aria-hidden />;
   }
   if (event === "error") {
     return <CloseCircleOutlined aria-hidden />;
