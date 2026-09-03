@@ -28,7 +28,18 @@ from pydantic import BaseModel
 
 from app.agent.main_agent import run_deep_agent
 from app.api.monitor import manager
+from app.api.renovation_server import router as renovation_router
+from app.api.runtime_state import (
+    active_tasks,
+    forget_task as _forget_task,
+    output_dir,
+    updated_dir,
+)
+from app.repository import renovation_repository as repo
+from app.utils.logger import get_logger
 from app.utils.upload_security import MAX_FILE_SIZE, validate_upload
+
+logger = get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -40,26 +51,14 @@ async def lifespan(_app: FastAPI):
     """
     loop = asyncio.get_running_loop()
     manager.set_loop(loop)
-    print(f"[Server] WebSocket Manager bound to loop: {id(loop)}")
+    logger.info("WebSocket Manager bound to loop: %s", id(loop))
     yield
 
 
-# 当前文件位于 app/api/server.py，运行时目录统一收敛到 app 目录
-current_dir = Path(__file__).resolve().parent
-project_root = current_dir.parent
+app = FastAPI(title="Renovation Decision Agent API", lifespan=lifespan)
 
-app = FastAPI(title="DeepAgents API", lifespan=lifespan)
-
-# 保存 thread_id -> 后台 Agent 任务，用于同一会话任务替换和主动取消
-active_tasks: dict[str, asyncio.Task] = {}
-
-# output 保存每个会话最终工作区，前端只允许从这里浏览和下载生成文件
-output_dir = project_root / "output"
-output_dir.mkdir(exist_ok=True)
-
-# updated 暂存用户上传文件，run_deep_agent 启动时会复制到对应 output/session_xxx
-updated_dir = project_root / "updated"
-updated_dir.mkdir(exist_ok=True)
+# 装修业务接口：会话、分析任务、资料文件、报告（docs/prd/home-renovation-api-design.md）
+app.include_router(renovation_router)
 
 # 教学项目通常前后端分别本地启动，这里放开跨域以便 Vite 页面直接调用 API
 app.add_middleware(
@@ -76,17 +75,6 @@ class TaskRequest(BaseModel):
 
     query: str
     thread_id: str = None
-
-
-def _forget_task(thread_id: str, task: asyncio.Task) -> None:
-    """
-    清理已结束任务的登记关系。
-
-    done_callback 触发时，active_tasks 中可能已经被新任务替换；只有仍是同一个
-    task 时才删除，避免误清理同 thread_id 下刚启动的新任务。
-    """
-    if active_tasks.get(thread_id) is task:
-        active_tasks.pop(thread_id, None)
 
 
 @app.post("/api/task")
@@ -201,6 +189,19 @@ async def upload_files(files: List[UploadFile] = File(...), thread_id: str = For
             }
         )
 
+        # 通用接口没有显式会话；若 thread_id 已绑定装修会话，则同步落库文件归属
+        session = repo.get_session_by_thread(thread_id)
+        if session:
+            repo.record_file(
+                user_id=session["user_id"],
+                session_id=session["session_id"],
+                original_name=file.filename,
+                storage_name=storage_name,
+                storage_path=str(file_path),
+                file_type="MATERIAL",
+                file_size=written,
+            )
+
     return {
         "status": "uploaded" if saved_files else "all_rejected",
         "files": [item["storage_name"] for item in saved_files],
@@ -251,7 +252,7 @@ async def list_files(path: str):
     Args:
         path (str): 目标目录的绝对路径 (必须在 output 目录下)。
     """
-    print(f"[DEBUG] 请求文件列表: {path}")
+    logger.debug("请求文件列表: %s", path)
 
     try:
         # 和下载接口保持同一条安全边界：前端只能查看 output 目录内部内容
@@ -259,11 +260,11 @@ async def list_files(path: str):
         output_abs = output_dir.resolve()
 
         if not abs_path.is_relative_to(output_abs):
-            print(f"[ERROR] 拒绝访问: {abs_path} 不在 {output_abs} 目录下")
+            logger.warning("拒绝访问: %s 不在 %s 目录下", abs_path, output_abs)
             return {"error": "拒绝访问: 只能访问输出目录下的文件"}
 
     except Exception as e:
-        print(f"[ERROR] 路径解析失败: {e}")
+        logger.warning("路径解析失败: %s", e)
         return {"error": f"路径无效: {e}"}
 
     if not abs_path.exists():
@@ -286,25 +287,39 @@ async def list_files(path: str):
                 )
 
     except Exception as e:
-        print(f"[ERROR] 遍历文件失败: {e}")
+        logger.warning("遍历文件失败: %s", e)
         return {"error": str(e)}
 
     # 最新生成的文件排在前面，方便用户优先看到本次任务产物
     files.sort(key=lambda x: x.get("mtime", 0), reverse=True)
-    print(f"[DEBUG] 找到 {len(files)} 个文件")
+    logger.debug("找到 %s 个文件", len(files))
     return {"files": files}
 
 
 @app.websocket("/ws/{thread_id}")
-async def websocket_endpoint(websocket: WebSocket, thread_id: str):
+async def websocket_endpoint(websocket: WebSocket, thread_id: str, user_id: str = ""):
     """
     WebSocket 实时通讯核心接口 (Real-time Communication)。
 
     连接建立后，ConnectionManager 会用 thread_id 保存 WebSocket。monitor 后续
     发送事件时只需要按 thread_id 查找连接，就能把进度推给对应页面。循环中的
     receive_text 用于接收前端心跳，避免连接空闲断开。
+
+    归属校验（FIX-007）：thread_id 已绑定装修会话时，校验 user_id（查询参数，
+    默认 1 与 MVP 单用户一致）是否为会话属主；未绑定会话的旧链路不受影响。
     """
-    print(f"会话向我们发起了请求，要求建立连接：{thread_id} 对应：{websocket}")
+    session = repo.get_session_by_thread(thread_id)
+    if session:
+        try:
+            caller_id = int(user_id) if user_id else 1
+        except ValueError:
+            caller_id = 1
+        if session["user_id"] != caller_id:
+            logger.warning("WebSocket 归属校验失败: thread=%s user=%s", thread_id, caller_id)
+            await websocket.close(code=4403)
+            return
+
+    logger.info("WebSocket 连接建立: %s", thread_id)
 
     # 连接建立后立即按 thread_id 注册，monitor 后续才能把事件定向推给当前页面
     await manager.connect(websocket, thread_id)
@@ -320,10 +335,10 @@ async def websocket_endpoint(websocket: WebSocket, thread_id: str):
     except WebSocketDisconnect:
         # 只移除当前 WebSocket 实例，避免旧连接断开时误删同 thread_id 的新连接
         manager.disconnect(websocket, thread_id)
-        print(f"[WebSocket] 客户端已断开: {thread_id}")
+        logger.info("客户端已断开: %s", thread_id)
 
     except Exception as e:
-        print(f"[WebSocket] 连接异常: {e}")
+        logger.warning("WebSocket 连接异常: %s", e)
         manager.disconnect(websocket, thread_id)
 
 

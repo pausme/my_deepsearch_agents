@@ -325,4 +325,15 @@ def detect_quote_risk_items(
         if risk["level"] == "HIGH":
             monitor.report_risk(risk["level"], risk["title"], risk["description"])
 
+    # 风险项落库（FIX-006）：业务任务运行时关联到 renovation_risk_item
+    try:
+        from app.api.context import get_thread_context
+        from app.repository import renovation_repository as repo
+
+        thread_id = get_thread_context()
+        if thread_id:
+            repo.save_risk_items_by_thread(thread_id, report["risks"])
+    except Exception:  # noqa: BLE001 - 持久化失败不影响 Agent 执行
+        pass
+
     return _dump(report)

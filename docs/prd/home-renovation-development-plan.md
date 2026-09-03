@@ -4,6 +4,9 @@
 
 基于当前 deepsearch-agents 项目，将通用深度研搜系统改造成面向 C 端用户的装修决策助手。
 
+当前技术问题和整改任务见：
+- `docs/prd/home-renovation-technical-fix-tasks.md`
+
 第一阶段目标：
 - 用户可以创建装修分析会话。
 - 用户可以上传报价单、合同、清单等资料。

@@ -143,10 +143,39 @@ def generate_renovation_report(
         return f"生成装修诊断报告失败: {str(e)}"
 
     monitor.report_file_generated(str(file_path), filename)
+
+    # 报告落库（FIX-006）：由装修业务接口发起的任务会关联到 renovation_report，
+    # 通用接口/脚本运行没有任务记录，静默跳过
+    _persist_report(report_id, title, one_line_conclusion, budget_score, file_path)
+
     return (
         f"装修诊断报告已成功生成：{filename}（报告编号 {report_id}）。"
         "如需 PDF，请调用 convert_md_to_pdf 转换该文件。"
     )
+
+
+def _persist_report(report_id, title, summary, budget_score, file_path) -> None:
+    try:
+        from app.api.context import get_thread_context
+        from app.repository import renovation_repository as repo
+
+        thread_id = get_thread_context()
+        if not thread_id:
+            return
+        task_row = repo.get_active_task_by_thread(thread_id)
+        if task_row is None:
+            return
+        repo.create_report(
+            session_id=task_row["session_id"],
+            task_id=task_row["task_id"],
+            report_id=report_id,
+            title=title,
+            summary=summary.strip(),
+            budget_score=max(0, min(100, int(budget_score))),
+            markdown_path=str(file_path),
+        )
+    except Exception as e:  # noqa: BLE001 - 持久化失败不影响报告生成
+        print(f"[ReportPersist] 保存报告记录失败: {e}")
 
 
 if __name__ == "__main__":

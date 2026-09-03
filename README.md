@@ -228,11 +228,13 @@ uv run pytest
 | --- | --- | --- |
 | V0.1 场景化 MVP | Prompt 改造、上传安全、报告模板、前端文案 | ✅ 已完成 |
 | 报价单/合同分析助手 | 规则引擎 + 子智能体 + 结构化风险输出 | ✅ 已完成 |
-| V0.3 数据持久化 | 会话、文件、任务、报告、风险项表 | 🚧 规划中 |
-| V0.4 前端产品化 | 装修会话表单、历史报告页、风险筛选 | 🚧 规划中 |
-| V1.0 可试用版本 | 权限、测试补齐、部署文档 | 🚧 规划中 |
+| V0.3 数据持久化 | 会话、文件、任务、报告、风险项（SQLite，字段对齐 PRD，可迁 MySQL） | ✅ 已完成 |
+| V0.4 前端产品化 | 装修会话表单、历史报告页、风险分级展示 | ✅ 已完成（报告分享/家人协作待做） |
+| V1.0 可试用版本 | 权限（已预留 X-User-Id）、部署文档、错误码全量覆盖 | 🚧 进行中 |
 
-其他待办：参考价数据迁入 MySQL（`renovation_price_reference`）、装修知识库接入 RAGFlow、参考价城市系数。
+整改任务明细见 [docs/prd/home-renovation-technical-fix-tasks.md](docs/prd/home-renovation-technical-fix-tasks.md)。
+
+其他待办：参考价数据迁入 MySQL（`renovation_price_reference`）、装修知识库接入 RAGFlow、参考价城市系数、登录态接入。
 
 ## ⚠️ 能力边界与免责声明
 

@@ -26,6 +26,10 @@ from app.api.context import (
     set_thread_context,
 )
 from app.api.monitor import monitor
+from app.repository import renovation_repository as renovation_repo
+from app.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 # 文件类工具由主智能体直接掌握，负责读取上传附件和生成最终交付文档
 from app.tools.markdown_tools import generate_markdown, generate_renovation_report
@@ -97,6 +101,12 @@ async def run_deep_agent(task_query, session_id):
     session_dir_token = set_session_context(session_dir_str)
     session_id_token = set_thread_context(session_id)
 
+    # 若本次执行由装修业务接口发起（renovation_task 已落库），推进任务状态；
+    # 通用接口/脚本运行没有任务记录，get_active_task_by_thread 返回 None 自动跳过
+    _task_row = _safe_get_task(session_id)
+    if _task_row:
+        _safe_update_task(_task_row["task_id"], "RUNNING")
+
     # 前端拿到工作目录后，可以展示本次任务生成的 Markdown/PDF 等产物
     monitor.report_session_dir(session_dir_str)
 
@@ -145,20 +155,41 @@ async def run_deep_agent(task_query, session_id):
                                     )
                         elif last_msg.content:
                             # 模型没有继续调用工具时，最新文本内容就是本轮可反馈给前端的结果
-                            print(
-                                f"主智能体执行结果，最终结果：{last_msg.content[:100]}"
-                            )
+                            logger.info("主智能体执行结果: %s", last_msg.content[:100])
                             monitor.report_task_result(last_msg.content)
+
+        if _task_row:
+            _safe_update_task(_task_row["task_id"], "SUCCESS")
 
     except asyncio.CancelledError:
         monitor.report_task_cancelled()
+        if _task_row:
+            _safe_update_task(_task_row["task_id"], "CANCELLED")
         raise
     except Exception as e:
         # 异步执行异常也走 monitor，保证前端能收到明确错误事件
         monitor._emit("error", f"执行主智能发生异常信息：{str(e)}")
+        if _task_row:
+            _safe_update_task(_task_row["task_id"], "FAILED", error_message=str(e)[:2000])
     finally:
         # 任务结束后恢复 ContextVar，避免后续请求复用到本次会话目录或 thread_id
         reset_session_context(session_dir_token, session_id_token)
+
+
+def _safe_get_task(thread_id: str):
+    """按线程查未完结任务；持久化异常不影响 Agent 执行。"""
+    try:
+        return renovation_repo.get_active_task_by_thread(thread_id)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("查询任务记录失败: %s", e)
+        return None
+
+
+def _safe_update_task(task_id: str, status: str, error_message: str | None = None) -> None:
+    try:
+        renovation_repo.update_task_status(task_id, status, error_message)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("更新任务状态失败: %s", e)
 
 
 if __name__ == "__main__":

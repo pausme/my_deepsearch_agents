@@ -16,6 +16,7 @@ import { ChatComposer } from "./components/ChatComposer";
 import { ConversationThread } from "./components/ConversationThread";
 import type { ChatTurn } from "./components/ConversationThread";
 import { API_BASE_URL, WS_BASE_URL } from "./lib/config";
+import { HistoryPanel } from "./components/HistoryPanel";
 import { useDeepAgentSession } from "./hooks/useDeepAgentSession";
 import type { ConnectionState, UploadedItem } from "./types";
 
@@ -152,6 +153,11 @@ export default function App() {
         <Button className="new-chat-button" block onClick={handleNewSession}>
           新建分析
         </Button>
+
+        <HistoryPanel
+          activeSessionId={session.activeSessionId}
+          onSessionBound={session.bindSession}
+        />
 
         <div className="sidebar-section">
           <span className="sidebar-label">THREAD</span>

@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { cancelTask, listSessionFiles, startTask, uploadSessionFiles } from "../lib/api";
+import {
+  cancelTask,
+  listSessionFiles,
+  startRenovationTask,
+  startTask,
+  uploadSessionFiles
+} from "../lib/api";
 import { WS_BASE_URL } from "../lib/config";
 import { createThreadId, getStoredThreadId, storeThreadId } from "../lib/thread";
 import type {
@@ -23,6 +29,7 @@ export function useDeepAgentSession() {
   const heartbeatTimerRef = useRef<number | undefined>(undefined);
   const uploadedNameSetRef = useRef<Set<string>>(new Set());
   const [threadId, setThreadId] = useState(getStoredThreadId);
+  const [activeSessionId, setActiveSessionId] = useState("");
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [events, setEvents] = useState<MonitorMessage[]>([]);
   const [files, setFiles] = useState<OutputFile[]>([]);
@@ -205,7 +212,11 @@ export function useDeepAgentSession() {
       setResult("");
       setLastError("");
       try {
-        const response = await startTask(cleanQuery, threadId);
+        // 绑定装修会话后走业务接口（任务落库、报告/风险项持久化）；
+        // 未绑定时保持通用接口兼容
+        const response = activeSessionId
+          ? await startRenovationTask(activeSessionId, cleanQuery, "FULL_REPORT")
+          : await startTask(cleanQuery, threadId);
         if (response.thread_id && response.thread_id !== threadId) {
           storeThreadId(response.thread_id);
           setThreadId(response.thread_id);
@@ -217,8 +228,12 @@ export function useDeepAgentSession() {
         throw error;
       }
     },
-    [threadId]
+    [activeSessionId, threadId]
   );
+
+  const bindSession = useCallback((sessionId: string) => {
+    setActiveSessionId(sessionId);
+  }, []);
 
   const cancelCurrentTask = useCallback(async () => {
     if (!isRunning) {
@@ -297,6 +312,8 @@ export function useDeepAgentSession() {
   }, [events, files.length]);
 
   return {
+    activeSessionId,
+    bindSession,
     connectionState,
     events,
     files,

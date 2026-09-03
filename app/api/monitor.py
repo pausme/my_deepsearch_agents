@@ -13,6 +13,9 @@ from typing import Any, Optional
 from fastapi import WebSocket
 
 from app.api.context import get_thread_context
+from app.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class ToolMonitor:
@@ -74,7 +77,7 @@ class ToolMonitor:
                 pass
 
         # 控制台保底输出，便于无前端场景下观察执行过程
-        print(f"\n[Monitor:{event_type}] {message}")
+        logger.info("[%s] %s", event_type, message)
 
     def _send_to_websocket(
         self,

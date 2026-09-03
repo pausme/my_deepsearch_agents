@@ -17,7 +17,12 @@ from langchain_core.tools import tool
 
 from app.api.context import get_session_context
 from app.api.monitor import monitor
-from app.utils.contract_rules import extract_contract_clauses, match_contract_risk_rules
+from app.utils.contract_rules import (
+    extract_contract_clauses as extract_clauses_rule,
+)
+from app.utils.contract_rules import (
+    match_contract_risk_rules as match_risk_rules_rule,
+)
 from app.utils.path_utils import resolve_path
 
 MAX_CONTRACT_CHARS = 30000  # 合同全文超出时截断，防止上下文溢出
@@ -122,7 +127,7 @@ def extract_contract_clauses(
     if not contract_text or not contract_text.strip():
         return _dump({"error": "合同文本为空，请先调用 parse_contract_file 读取合同"})
 
-    clauses = extract_contract_clauses(contract_text)
+    clauses = extract_clauses_rule(contract_text)
     return _dump({"clauses": clauses, "notes": "提取不到的字段表示合同中未识别到对应约定"})
 
 
@@ -152,10 +157,21 @@ def match_contract_risk_rules(
     if not isinstance(clauses, dict):
         return "错误：clauses_json 结构不符合预期。"
 
-    report = match_contract_risk_rules(clauses, full_text=contract_text or "")
+    report = match_risk_rules_rule(clauses, full_text=contract_text or "")
 
     for risk in report["risks"]:
         if risk["level"] == "HIGH":
             monitor.report_risk(risk["level"], risk["title"], risk["description"])
+
+    # 风险项落库（FIX-006）：业务任务运行时关联到 renovation_risk_item
+    try:
+        from app.api.context import get_thread_context
+        from app.repository import renovation_repository as repo
+
+        thread_id = get_thread_context()
+        if thread_id:
+            repo.save_risk_items_by_thread(thread_id, report["risks"])
+    except Exception:  # noqa: BLE001 - 持久化失败不影响 Agent 执行
+        pass
 
     return _dump(report)

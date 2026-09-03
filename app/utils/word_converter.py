@@ -71,9 +71,10 @@ def convert_md_to_pdf(md_abs_path: Path, pdf_abs_path: Path) -> str:
         story = _markdown_to_story(md_content, styles)
         doc.build(story)
 
+        # 只返回文件名：该字符串会经模型转述给用户，不能暴露服务端绝对路径
         if pdf_abs_path.exists():
-            return f"成功转换: {pdf_abs_path}"
-        return f"转换完成但未生成文件: {pdf_abs_path}"
+            return f"成功转换: {pdf_abs_path.name}"
+        return f"转换完成但未生成文件: {pdf_abs_path.name}"
 
     except Exception as e:
         logging.error(f"Markdown 转 PDF 失败: {e}", exc_info=True)

@@ -44,7 +44,7 @@ def convert_md_to_pdf(
         md_abs_path = Path(resolve_path(str(md_path), session_dir))
 
         if not md_abs_path.exists():
-            return f"错误：文件不存在 {md_abs_path}"
+            return f"错误：文件不存在 {md_abs_path.name}"
 
         # 未指定 PDF 文件名时，默认与源 Markdown 同目录同名
         if pdf_filename:

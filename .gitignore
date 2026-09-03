@@ -67,3 +67,4 @@ Thumbs.db
 
 # zread.ai wiki cache
 .zread/
+app/data/*.sqlite3*
