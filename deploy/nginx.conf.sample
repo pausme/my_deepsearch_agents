@@ -1,0 +1,47 @@
+# nginx 反向代理配置样例（可选）
+# 用途一：单进程部署时加 HTTPS / 域名 / gzip（FastAPI 已托管前端静态文件）
+# 用途二：前后端分离部署时，将 / 与 /api、/ws 分别转发到静态目录与后端
+# 安装：sudo cp deploy/nginx.conf.sample /etc/nginx/sites-available/renovation && \
+#       sudo ln -s /etc/nginx/sites-available/renovation /etc/nginx/sites-enabled/ && \
+#       sudo nginx -t && sudo systemctl reload nginx
+
+server {
+    listen 80;
+    server_name renov.example.com;   # 改为你的域名或服务器 IP
+
+    # 上传报价单/合同的体积上限，与后端 20MB 限制保持一致并留余量
+    client_max_body_size 25m;
+
+    # 全部转发给 FastAPI（单进程部署：API + WebSocket + 前端静态文件都由它提供）
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # WebSocket 需要升级协议
+    location /ws/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600s;
+        proxy_set_header Host $host;
+    }
+
+    # 静态资源缓存（Vite 产物带内容哈希，可长缓存）
+    location /assets/ {
+        proxy_pass http://127.0.0.1:8000;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+}
+
+# HTTPS 建议（有域名后执行，自动配置证书与 443 跳转）：
+#   sudo apt install certbot python3-certbot-nginx
+#   sudo certbot --nginx -d renov.example.com

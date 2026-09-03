@@ -7,6 +7,7 @@ WebSocket 长连接。HTTP 接口只做轻量调度，真正的 DeepAgents 执�
 """
 
 import asyncio
+import os
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -24,6 +25,7 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app.agent.main_agent import run_deep_agent
@@ -33,6 +35,7 @@ from app.api.runtime_state import (
     active_tasks,
     forget_task as _forget_task,
     output_dir,
+    project_root,
     updated_dir,
 )
 from app.repository import renovation_repository as repo
@@ -60,14 +63,40 @@ app = FastAPI(title="Renovation Decision Agent API", lifespan=lifespan)
 # 装修业务接口：会话、分析任务、资料文件、报告（docs/prd/home-renovation-api-design.md）
 app.include_router(renovation_router)
 
-# 教学项目通常前后端分别本地启动，这里放开跨域以便 Vite 页面直接调用 API
+# 教学项目通常前后端分别本地启动，这里放开跨域以便 Vite 页面直接调用 API；
+# 生产部署通过 ALLOWED_ORIGINS 收紧（逗号分隔的具体来源）
+_allowed_origins = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "*").split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 前端静态托管：frontend/dist 存在时由本服务直接托管（单进程部署，2c2g 推荐）；
+# 分离部署时可用 FRONTEND_DIST 指向其他目录，或置空变量 FRONTEND_DIST=disabled 关闭
+frontend_dist = Path(os.getenv("FRONTEND_DIST", project_root.parent / "frontend" / "dist"))
+if str(frontend_dist) != "disabled" and (frontend_dist / "index.html").exists():
+    assets_dir = frontend_dist / "assets"
+    if assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str):
+        """非 API 的 GET 请求回落到前端 SPA；未知 /api 路径仍返回 404。"""
+        if full_path.startswith("api/") or full_path == "api":
+            raise HTTPException(status_code=404, detail="接口不存在")
+        candidate = (frontend_dist / full_path).resolve()
+        if (
+            full_path
+            and candidate.is_relative_to(frontend_dist.resolve())
+            and candidate.is_file()
+        ):
+            return FileResponse(candidate)
+        return FileResponse(frontend_dist / "index.html")
+
+    logger.info("已托管前端静态文件: %s", frontend_dist)
 
 
 class TaskRequest(BaseModel):

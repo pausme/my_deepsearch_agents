@@ -1,0 +1,33 @@
+# systemd 服务单元：装修决策管家（单进程部署）
+# 安装：
+#   1. 修改下方 User、WorkingDirectory 和 EnvironmentFile 为服务器实际路径
+#   2. sudo cp deploy/renovation-agent.service /etc/systemd/system/
+#   3. sudo systemctl daemon-reload && sudo systemctl enable --now renovation-agent
+# 查看日志：journalctl -u renovation-agent -f
+
+[Unit]
+Description=Renovation Decision Agent (FastAPI + DeepAgents)
+After=network-online.target mysql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# 改为实际运行用户
+User=ubuntu
+Group=ubuntu
+# 改为项目实际路径
+WorkingDirectory=/opt/renovation-agent
+EnvironmentFile=/opt/renovation-agent/.env
+# 必须单 worker：WebSocket 连接表、任务表、会话记忆均为进程内状态
+ExecStart=/opt/renovation-agent/.venv/bin/uvicorn app.api.server:app --host 0.0.0.0 --port 8000
+Restart=on-failure
+RestartSec=5
+# 2c2g 机器保护：限制内存用量，超限自动重启
+MemoryMax=1200M
+
+# 安全加固（按需启用）
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

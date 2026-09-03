@@ -306,3 +306,25 @@ class TestReportPersistence:
         assert finished["status"] == "FAILED"
         assert finished["error_message"] == "模型超时"
         assert finished["finish_time"]
+
+
+class TestStaticServing:
+    def test_spa_fallback_when_dist_present(self, client):
+        """frontend/dist 存在时，非 API GET 应回落到 index.html（单进程部署）。"""
+        from pathlib import Path
+
+        dist = Path(__file__).resolve().parents[1] / "frontend" / "dist"
+        if not (dist / "index.html").exists():
+            pytest.skip("frontend/dist 不存在，先执行 pnpm build")
+
+        response = client.get("/")
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+
+        # SPA 路由也回落到 index.html，由前端路由接管
+        response = client.get("/some-spa-route")
+        assert response.status_code == 200
+
+        # 未知 API 路径仍然 404，不被 SPA 兜底吞掉
+        response = client.get("/api/not-exists")
+        assert response.status_code == 404

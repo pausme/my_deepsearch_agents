@@ -112,9 +112,13 @@ renovation-decision-agent/
 │   └── updated/                    # 运行时生成：用户上传文件的会话暂存目录
 ├── docs/
 │   ├── prd/                        # 本项目 PRD：产品/数据模型/接口/Agent 工具/开发计划
+│   ├── deployment.md               # 部署指南（2c2g 单进程部署）
 │   └── knowledge_base/             # RAGFlow 知识库示例 PDF（待补充装修资料）
+├── deploy/                         # systemd 服务单元与 nginx 配置样例
 ├── docker/                         # 本地 MySQL 教学环境
 ├── frontend/                       # React + Vite 前端（装修决策管家）
+├── scripts/
+│   └── check_env.py                # 部署前环境自检脚本
 ├── tests/                          # pytest 单元测试（上传安全/SQL/报价/合同/报告模板）
 ├── .env.example                    # 环境变量示例
 └── pyproject.toml                  # Python 依赖与 pytest 配置
@@ -197,6 +201,10 @@ pnpm dev
 ```
 
 默认连接 `http://localhost:8000`（API）和 `ws://localhost:8000`（WebSocket），可在 `frontend/.env.local` 中用 `VITE_API_BASE_URL` / `VITE_WS_BASE_URL` 修改。
+
+## 🚢 部署
+
+支持**单进程部署**：`pnpm build` 后由 FastAPI 直接托管前端静态文件，一个 uvicorn 进程 + 可选 MySQL 容器即可上线（2 核 2GB 服务器足够）。完整步骤、systemd/nginx 模板、备份与安全清单见 **[docs/deployment.md](docs/deployment.md)**，启动前可运行 `uv run python scripts/check_env.py` 做环境自检。
 
 ### 7. 跑几个示例任务
 

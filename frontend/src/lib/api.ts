@@ -73,13 +73,14 @@ export async function uploadSessionFiles(
 }
 
 export async function listSessionFiles(path: string): Promise<FileListResponse> {
-  const url = new URL(apiUrl("/api/files"));
+  // 第二个参数兜底：API_BASE_URL 为空（同源部署）时 URL 需要显式 base 才能构造
+  const url = new URL(apiUrl("/api/files"), window.location.origin);
   url.searchParams.set("path", path);
   return requestJson<FileListResponse>(url);
 }
 
 export function getDownloadUrl(path: string): string {
-  const url = new URL(apiUrl("/api/download"));
+  const url = new URL(apiUrl("/api/download"), window.location.origin);
   url.searchParams.set("path", path);
   return url.toString();
 }

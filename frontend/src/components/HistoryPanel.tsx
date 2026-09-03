@@ -341,9 +341,9 @@ export function HistoryPanel({ activeSessionId, onSessionBound }: HistoryPanelPr
 }
 
 function getReportPdfUrl(markdownPath: string): string {
-  // PDF 与 Markdown 同名同目录，走通用下载接口
+  // PDF 与 Markdown 同名同目录，走通用下载接口；同源部署时 API_BASE_URL 为空
   const pdfPath = markdownPath.replace(/\.md$/, ".pdf");
-  const url = new URL(`${API_BASE_URL}/api/download`);
+  const url = new URL(`${API_BASE_URL}/api/download`, window.location.origin);
   url.searchParams.set("path", pdfPath);
   return url.toString();
 }
